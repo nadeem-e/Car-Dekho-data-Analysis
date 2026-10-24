@@ -1,0 +1,788 @@
+USE nadeemdb;
+
+SELECT * FROM `car dekho`;
+'''1) checking wheather there is NULL or empty rows , and removing it.'''
+SELECT
+    COUNT(*) AS total_rows,
+    
+    SUM(CASE
+        WHEN name IS NULL OR TRIM(name) = ''
+        THEN 1 
+        ELSE 0
+    END) AS name_missing,
+
+    SUM(CASE
+        WHEN year IS NULL
+        THEN 1 
+        ELSE 0
+    END) AS year_missing,
+
+    SUM(CASE
+        WHEN selling_price IS NULL
+        THEN 1 ELSE 0
+    END) AS price_missing,
+
+    SUM(CASE
+        WHEN km_driven IS NULL
+        THEN 1 
+        ELSE 0
+    END) AS km_missing,
+
+    SUM(CASE
+        WHEN fuel IS NULL OR TRIM(fuel) = ''
+        THEN 1 
+        ELSE 0
+    END) AS fuel_missing,
+
+    SUM(CASE
+        WHEN seller_type IS NULL OR TRIM(seller_type) = ''
+        THEN 1 
+        ELSE 0
+    END) AS seller_missing,
+
+    SUM(CASE
+        WHEN transmission IS NULL OR TRIM(transmission) = ''
+        THEN 1 
+        ELSE 0
+    END) AS transmission_missing,
+
+    SUM(CASE
+        WHEN owner IS NULL OR TRIM(owner) = ''
+        THEN 1 
+        ELSE 0
+    END) AS owner_missing,
+
+    SUM(CASE
+        WHEN mileage IS NULL OR TRIM(mileage) = ''
+        THEN 1 ELSE 0
+    END) AS mileage_missing,
+
+    SUM(CASE
+        WHEN engine IS NULL OR TRIM(engine) = ''
+        THEN 1 ELSE 0
+    END) AS engine_missing,
+
+    SUM(CASE
+        WHEN max_power IS NULL OR TRIM(max_power) = ''
+        THEN 1 
+        ELSE 0
+    END) AS power_missing,
+
+    SUM(CASE
+        WHEN torque IS NULL OR TRIM(torque) = ''
+        THEN 1 
+        ELSE 0
+    END) AS torque_missing,
+
+    SUM(CASE
+        WHEN seats IS NULL
+        THEN 1 
+        ELSE 0
+    END) AS seats_missing
+FROM `car dekho`;
+
+SELECT *
+FROM `car dekho`
+WHERE torque IS NULL or trim(torque)='';
+
+DELETE FROM `car dekho`
+WHERE torque IS NULL or trim(torque)='';
+
+SELECT COUNT(*) AS torque_null_count
+FROM `car dekho`
+WHERE torque IS NULL;
+
+-- ----------------------------------------------------------------------------------------------------------------------------------------- --
+'''2) checking wheather there is duplicates and removing it.'''
+SELECT 
+    name,
+    year,
+    selling_price,
+    km_driven,
+    fuel,
+    seller_type,
+    transmission,
+    owner,
+    mileage,
+    engine,
+    max_power,
+    torque,
+    seats,
+    COUNT(*) AS duplicate_count
+FROM `car dekho`
+GROUP BY
+	name,
+    year,
+    selling_price,
+    km_driven,
+    fuel,
+    seller_type,
+    transmission,
+    owner,
+    mileage,
+    engine,
+    max_power,
+    torque,
+    seats
+HAVING COUNT(*) > 1;
+
+
+'''To remove duplicate data , we can use distict'''
+CREATE TABLE `car dekho_clean` AS
+SELECT DISTINCT *
+FROM `car dekho`;
+
+SELECT COUNT(*) AS original_rows
+FROM car_dekho;
+
+SELECT COUNT(*) AS cleaned_rows
+FROM `car dekho_clean`;
+
+DROP TABLE `car dekho`;
+RENAME TABLE `car dekho_clean` TO `car dekho`;
+
+SELECT *
+FROM car_dekho;
+
+RENAME TABLE `car dekho` TO car_dekho;
+
+-- ---------------------------------------------------------------------------------------------------------------------------------------------- --
+'''3) Now we need to check wheather my datatypes are in proper format '''
+DESCRIBE car_dekho;
+'''from this mileage,engine,max_power and torque contains DECIMAL+UNIT 
+we cannot simply remove the units bcs for eg: in milage session we have kmpl and kg/kg so when we 
+deleting whole unit,it will be a problem. 
+so we are creating a new table containing this 4 fields 
+and for connecting those tables we need to create an ID coloumn to our main dataset'''
+
+ALTER TABLE car_dekho
+ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST;
+
+CREATE TABLE car_dekho_extra (
+    id INT PRIMARY KEY,
+    mileage DECIMAL(10,2),
+    mileage_unit VARCHAR(10),
+    engine DECIMAL(10,2),
+    engine_unit VARCHAR(10),
+    max_power DECIMAL(10,2),
+    power_unit VARCHAR(10),
+    torque DECIMAL(10,2),
+    torque_unit VARCHAR(10),
+    FOREIGN KEY (id) REFERENCES car_dekho(id)
+);
+
+
+'''to get the data from car_dekho to car_dekho_extra; '''
+'''mileage'''
+SELECT
+    id,
+    mileage,
+    CAST(SUBSTRING_INDEX(mileage, ' ', 1) AS DECIMAL(10,2)) AS mileage_value,
+    SUBSTRING_INDEX(mileage, ' ', -1) AS mileage_unit
+FROM car_dekho;
+'''engine'''
+SELECT
+    id,
+    engine,
+    CAST(REPLACE(engine, ' CC', '') AS DECIMAL(10,2)) AS engine_value,
+    'CC' AS engine_unit
+FROM car_dekho;
+'''max power'''
+SELECT
+    id,
+    max_power,
+    CAST(REPLACE(max_power, ' bhp', '') AS DECIMAL(10,2)) AS power_value,
+    'bhp' AS power_unit
+FROM car_dekho;
+'''torque'''
+SELECT
+    id,
+    torque,
+    CAST(
+        SUBSTRING_INDEX(
+            REPLACE(torque, 'Nm', ''),
+            '@',
+            1
+        ) AS DECIMAL(10,2)
+    ) AS torque_value,
+    'Nm' AS torque_unit
+FROM car_dekho;
+
+INSERT INTO car_dekho_extra
+(
+    id,
+    mileage,
+    mileage_unit,
+    engine,
+    engine_unit,
+    max_power,
+    power_unit,
+    torque,
+    torque_unit
+)
+SELECT
+    id,
+    -- Mileage
+    CAST(SUBSTRING_INDEX(mileage, ' ', 1) AS DECIMAL(10,2)),
+    SUBSTRING_INDEX(mileage, ' ', -1),
+    -- Engine
+    CAST(REPLACE(engine, ' CC', '') AS DECIMAL(10,2)),
+    'CC',
+    -- Max Power
+    CAST(REPLACE(max_power, ' bhp', '') AS DECIMAL(10,2)),
+    'bhp',
+    -- Torque
+    CAST(
+        SUBSTRING_INDEX(
+            REPLACE(torque, 'Nm', ''),
+            '@',
+            1
+        ) AS DECIMAL(10,2)
+    ),
+    'Nm'
+FROM car_dekho;
+select * from car_dekho; 
+
+-- ------------------------------------------------------------------------------------------------------------------------------------------------ --
+
+'''4) Feature engineering- process of creating, changing, or selecting useful features (columns) from raw data'''
+'''so that we are creating another coloumns in our table ‘car_dekho_extra'''
+ALTER TABLE car_dekho_extra
+ADD COLUMN year INT;
+
+-- Then copy the year using id: --
+UPDATE car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+SET e.year = c.year;
+
+
+-- Adding new coloumns --
+ALTER TABLE car_dekho_extra
+ADD COLUMN car_age INT,
+ADD COLUMN engine_category VARCHAR(20),
+ADD COLUMN power_category VARCHAR(20),
+ADD COLUMN torque_category VARCHAR(20),
+ADD COLUMN mileage_category VARCHAR(20);
+
+-- add data to this newly created coloumns --
+-- Car Age --
+UPDATE car_dekho_extra
+SET car_age = 2026 - year
+WHERE id > 0;
+
+-- adding engine_category --
+UPDATE car_dekho_extra
+SET engine_category =
+    CASE
+        WHEN engine IS NULL THEN NULL
+        WHEN engine < 1200 THEN 'Small'
+        WHEN engine < 1600 THEN 'Medium'
+        WHEN engine < 2000 THEN 'Large'
+        ELSE 'Very Large'
+    END
+WHERE id > 0;
+    
+-- adding power_category --
+UPDATE car_dekho_extra
+SET power_category =
+    CASE
+        WHEN max_power IS NULL THEN NULL
+        WHEN max_power < 75 THEN 'Low'
+        WHEN max_power < 120 THEN 'Medium'
+        WHEN max_power < 180 THEN 'High'
+        ELSE 'Very High'
+    END
+WHERE id > 0;
+
+-- adding torque_category --
+UPDATE car_dekho_extra
+SET torque_category =
+    CASE
+        WHEN torque IS NULL THEN NULL
+        WHEN torque < 150 THEN 'Low'
+        WHEN torque < 250 THEN 'Medium'
+        WHEN torque < 400 THEN 'High'
+        ELSE 'Very High'
+    END
+WHERE id > 0;
+
+-- adding mileage_category --
+UPDATE car_dekho_extra
+SET mileage_category =
+    CASE
+        WHEN mileage IS NULL THEN NULL
+        WHEN mileage < 15 THEN 'Low'
+        WHEN mileage < 20 THEN 'Medium'
+        ELSE 'High'
+    END
+WHERE id > 0;
+
+select * from car_dekho_extra;
+
+
+'''5) EDA - Exploratory Data Analysis'''
+-- Univariate --
+
+-- 1. How many cars are there for each fuel type? --
+SELECT
+    fuel,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY fuel
+ORDER BY number_of_cars DESC;
+
+-- 2. What is the distribution of selling prices? --
+SELECT
+    CASE
+        WHEN selling_price < 100000 THEN '0 - 99,999'
+        WHEN selling_price < 200000 THEN '100,000 - 199,999'
+        WHEN selling_price < 300000 THEN '200,000 - 299,999'
+        WHEN selling_price < 400000 THEN '300,000 - 399,999'
+        WHEN selling_price < 500000 THEN '400,000 - 499,999'
+        WHEN selling_price < 600000 THEN '500,000 - 599,999'
+        WHEN selling_price < 700000 THEN '600,000 - 699,999'
+        WHEN selling_price < 800000 THEN '700,000 - 799,999'
+        WHEN selling_price < 900000 THEN '800,000 - 899,999'
+        ELSE '900,000+'
+    END AS price_range,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY price_range
+ORDER BY MIN(selling_price);
+
+-- 3. What is the distribution of car age? --
+SELECT
+    car_age,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY car_age
+ORDER BY car_age;
+
+-- 4. How are cars distributed by transmission? --
+SELECT
+    transmission,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY transmission
+ORDER BY number_of_cars DESC;
+
+-- 5. How many cars are there for each seller type? --
+SELECT
+    seller_type,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY seller_type
+ORDER BY number_of_cars DESC;
+
+-- 6. How many cars are there for each owner type? --
+SELECT
+    owner,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY owner
+ORDER BY number_of_cars DESC; 
+
+-- 7. How many cars are there for each manufacturing year? --
+SELECT
+    year,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY year
+ORDER BY year;
+
+-- 8. What is the distribution of kilometers driven? --
+SELECT
+    CASE
+        WHEN km_driven < 25000 THEN '0 - 24,999'
+        WHEN km_driven < 50000 THEN '25,000 - 49,999'
+        WHEN km_driven < 75000 THEN '50,000 - 74,999'
+        WHEN km_driven < 100000 THEN '75,000 - 99,999'
+        WHEN km_driven < 125000 THEN '100,000 - 124,999'
+        WHEN km_driven < 150000 THEN '125,000 - 149,999'
+        WHEN km_driven < 175000 THEN '150,000 - 174,999'
+        WHEN km_driven < 200000 THEN '175,000 - 199,999'
+        ELSE '200,000+'
+    END AS km_range,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY km_range
+ORDER BY MIN(km_driven);
+
+-- 9. How are cars distributed by engine category? --
+SELECT
+    engine_category,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY engine_category
+ORDER BY number_of_cars DESC;
+
+-- 10. How are cars distributed by power category? --
+SELECT
+    power_category,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY power_category
+ORDER BY number_of_cars DESC;
+
+-- 11. How are cars distributed by torque category? --
+SELECT
+    torque_category,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY torque_category
+ORDER BY number_of_cars DESC;
+
+-- 12. How are cars distributed by mileage category? --
+SELECT
+    mileage_category,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY mileage_category
+ORDER BY number_of_cars DESC;
+
+-- 13. What is the distribution of mileage? --
+SELECT
+    CASE
+        WHEN mileage < 10 THEN 'Below 10'
+        WHEN mileage < 15 THEN '10 - 14.99'
+        WHEN mileage < 20 THEN '15 - 19.99'
+        WHEN mileage < 25 THEN '20 - 24.99'
+        ELSE '25+'
+    END AS mileage_range,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY mileage_range
+ORDER BY MIN(mileage);
+
+-- 14. What is the distribution of maximum power? --
+SELECT
+    CASE
+        WHEN max_power < 75 THEN 'Below 75 bhp'
+        WHEN max_power < 120 THEN '75 - 119.99 bhp'
+        WHEN max_power < 180 THEN '120 - 179.99 bhp'
+        WHEN max_power < 250 THEN '180 - 249.99 bhp'
+        ELSE '250+ bhp'
+    END AS power_range,
+    COUNT(*) AS number_of_cars
+FROM car_dekho_extra
+GROUP BY power_range
+ORDER BY MIN(max_power);
+
+-- 15. How many cars are there for each seat capacity? --
+SELECT
+    seats,
+    COUNT(*) AS number_of_cars
+FROM car_dekho
+GROUP BY seats
+ORDER BY seats;
+
+-- --------------------------------------------------------------------------- --
+
+-- Bivariete --
+
+-- 1. Does kilometers driven affect selling price? --
+SELECT
+    km_driven,
+    AVG(selling_price) AS average_selling_price
+FROM car_dekho
+GROUP BY km_driven
+ORDER BY km_driven;
+
+-- 2. Does car age affect selling price? --
+SELECT
+    e.car_age,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY e.car_age
+ORDER BY e.car_age ASC;
+
+-- 3.Does engine affect avg selling price? --
+SELECT
+    e.engine,
+    AVG(c.selling_price)
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY engine
+ORDER BY engine ASC;
+
+-- 4. Does maximum power affect avg selling price? --
+SELECT
+    e.max_power,
+    AVG(c.selling_price)
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY e.max_power
+ORDER BY e.max_power ASC;
+
+-- 5. Does mileage affect avg selling price? --
+SELECT
+    e.mileage,
+    avg(c.selling_price)
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+group by e.mileage
+order by e.mileage;
+
+-- 6. Which fuel type has the highest average selling price? --
+SELECT
+    fuel,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY fuel
+ORDER BY average_price DESC;
+
+-- 7. How does average selling price vary by transmission type? --
+SELECT
+    transmission,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY transmission
+ORDER BY average_price DESC;
+
+-- 8. How does average selling price vary by owner type? --
+SELECT
+    owner,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY owner
+ORDER BY average_price DESC;
+
+-- 9. Does seller type affect average selling price? --
+SELECT
+    seller_type,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY seller_type
+ORDER BY average_price DESC;
+
+-- 10. Does the number of seats relate to selling price? --
+SELECT
+    seats,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY seats
+ORDER BY seats asc;
+
+-- 11. What is the average selling price for each manufacturing year? --
+SELECT
+    year,
+    AVG(selling_price) AS average_price
+FROM car_dekho
+GROUP BY year
+ORDER BY year;
+
+-- 12. How does average mileage vary across different fuel types? --
+SELECT
+    c.fuel,
+    AVG(e.mileage) AS average_mileage
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY c.fuel
+ORDER BY average_mileage DESC;
+
+-- 14. How does average mileage vary by transmission type? -- 
+SELECT
+    c.transmission,
+    AVG(e.mileage) AS average_mileage
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY c.transmission
+ORDER BY average_mileage DESC;
+
+-- 15. Does torque affect avg selling price? --
+SELECT
+    e.torque,
+    avg(c.selling_price)
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+group by e.torque
+order by e.torque asc;
+
+-- 16. Does avg maximum power affect engine capacity? --
+SELECT
+    engine,
+    avg(max_power)
+FROM car_dekho_extra
+group by engine
+order by engine asc;
+
+-- 17. Does avg mileage vary with engine capacity? --
+SELECT
+    engine,
+    avg(mileage)
+FROM car_dekho_extra
+group by engine
+order by engine asc;
+
+select * from car_dekho
+
+-- -------------------------------------------------------------------------------------------------- --
+-- Multivariete --
+
+
+-- 1) How do car age and kilometers driven together relate to selling price?--
+SELECT
+    e.car_age,
+    c.km_driven,
+    c.selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+order by car_age
+
+-- 2) How are engine capacity and maximum power together related to selling price? --
+SELECT
+    e.engine,
+    e.max_power,
+    c.selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+order by e.engine;
+
+-- 3) How does average selling price vary across different fuel types and transmission types? --
+SELECT
+    c.fuel,
+    c.transmission,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+GROUP BY
+    c.fuel,
+    c.transmission
+ORDER BY
+    c.fuel;
+    
+-- 4) How do fuel type, car age, and selling price relate to each other? --
+SELECT
+    c.fuel,
+    e.car_age,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY
+    c.fuel,
+    e.car_age
+ORDER BY
+    e.car_age;
+    
+-- 5) How do transmission type, car age, and selling price relate? --
+SELECT
+    c.transmission,
+    e.car_age,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY
+    c.transmission,
+    e.car_age
+ORDER BY
+    e.car_age;
+    
+-- 6) How do engine category, fuel type, and selling price relate? --
+SELECT
+    e.engine_category,
+    c.fuel,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY
+    e.engine_category,
+    c.fuel
+ORDER BY
+    e.engine_category,
+    c.fuel;
+    
+-- 7) How do power category, transmission type, and selling price relate? --
+SELECT
+    e.power_category,
+    c.transmission,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY
+    e.power_category,
+    c.transmission
+ORDER BY
+    e.power_category,
+    c.transmission;
+    
+
+-- 8) How do owner type, transmission type, and average selling price relate? --
+SELECT
+    c.owner,
+    c.transmission,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+GROUP BY
+    c.owner,
+    c.transmission
+ORDER BY
+    c.owner,
+    c.transmission;
+    
+-- 9) How do fuel type, mileage, and selling price relate? --
+SELECT
+    c.fuel,
+    e.mileage,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY
+    c.fuel,
+    e.mileage
+ORDER BY
+    c.fuel,
+    e.mileage;
+    
+-- 10) How do mileage, car age, and selling price relate? --
+SELECT
+    e.mileage,
+    e.car_age,
+    c.selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+order by e.car_age;
+
+    
+-- 11) How do mileage category, fuel type, and selling price relate? -- 
+SELECT
+    e.mileage_category,
+    c.fuel,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho_extra e
+JOIN car_dekho c
+    ON e.id = c.id
+GROUP BY
+    e.mileage_category,
+    c.fuel
+ORDER BY
+    c.fuel;
+    
+-- 12) How do fuel type, mileage, and selling price relate? --
+SELECT
+    c.fuel,
+    e.mileage,
+    AVG(c.selling_price) AS average_selling_price
+FROM car_dekho c
+JOIN car_dekho_extra e
+    ON c.id = e.id
+GROUP BY
+    c.fuel,
+    e.mileage
+ORDER BY
+    e.mileage;
